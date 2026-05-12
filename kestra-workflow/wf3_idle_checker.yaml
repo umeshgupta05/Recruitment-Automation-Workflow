@@ -1,0 +1,189 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# WORKFLOW 3: IDLE PROFILE CHECKER  (Gemini edition — hardcoded credentials)
+# Namespace : recruitment.workflows
+# Purpose   : Runs daily at 09:00. Finds profiles idle >= 14 days.
+#             Sends a Gemini-generated coaching nudge email to each.
+# ─────────────────────────────────────────────────────────────────────────────
+
+id: wf3_idle_checker
+namespace: recruitment.workflows
+description: "Daily idle-profile scan — sends Gemini nudge emails to stale candidates."
+
+tasks:
+  # ── TASK 1: List all candidate KV keys ───────────────────────────────────
+  - id: list_candidate_keys
+    type: io.kestra.plugin.core.kv.GetKeys
+    description: "Lists all KV keys matching 'candidate_*' via the native KV plugin."
+    prefix: "candidate_"
+    namespace: recruitment.workflows
+
+  # ── TASK 2: For each candidate — check idle and nudge ────────────────────
+  - id: check_and_nudge
+    type: io.kestra.plugin.core.flow.EachSequential
+    description: "Iterates over every candidate key and applies idle-check + nudge logic."
+    value: "{{ outputs.list_candidate_keys.keys }}"
+    tasks:
+      # 2a. Fetch the candidate profile
+      - id: get_profile
+        type: io.kestra.plugin.core.kv.Get
+        description: "Fetches the candidate JSON profile from the KV store."
+        key: "{{ taskrun.value }}"
+        namespace: recruitment.workflows
+        errorOnMissing: false
+
+      # 2b. Compute idle days (threshold hardcoded to 14)
+      - id: check_idle
+        type: io.kestra.plugin.scripts.python.Script
+        description: "Parses last_updated and determines if the profile is idle (>= 14 days)."
+        beforeCommands:
+          - pip install -q kestra
+        script: |
+          import json
+          from datetime import datetime, timezone
+          from kestra import Kestra
+
+          profile_json   = """{{ outputs.get_profile.value ?? '{}' }}"""
+          idle_threshold = 14   # hardcoded
+
+          try:
+              profile = json.loads(profile_json)
+          except Exception:
+              profile = {}
+
+          if not profile:
+              Kestra.outputs({
+                  "should_nudge":    "false",
+                  "days_idle":       0,
+                  "candidate_name":  "",
+                  "candidate_email": "",
+                  "candidate_role":  "",
+                  "candidate_score": 0,
+                  "candidate_stage": ""
+              })
+          else:
+              last_updated_str = profile.get("last_updated", "")
+              try:
+                  last_dt = datetime.fromisoformat(last_updated_str)
+                  if last_dt.tzinfo is None:
+                      last_dt = last_dt.replace(tzinfo=timezone.utc)
+                  days_idle = (datetime.now(timezone.utc) - last_dt).days
+              except Exception:
+                  days_idle = 9999
+
+              # Skip rejected candidates — no point nudging
+              should_nudge = (days_idle >= idle_threshold) and (profile.get("stage") != "rejected")
+
+              Kestra.outputs({
+                  "should_nudge":    "true" if should_nudge else "false",
+                  "days_idle":       days_idle,
+                  "candidate_name":  profile.get("name", ""),
+                  "candidate_email": profile.get("email", ""),
+                  "candidate_role":  profile.get("role", ""),
+                  "candidate_score": profile.get("score", 0),
+                  "candidate_stage": profile.get("stage", "unknown"),
+              })
+
+      # ── Conditional block: only nudge when idle ───────────────────────────
+      - id: nudge_if_idle
+        type: io.kestra.plugin.core.flow.If
+        description: "Only proceeds with nudge tasks when the profile is genuinely idle."
+        condition: "{{ outputs.check_idle.vars.should_nudge == 'true' }}"
+        then:
+          # 2c. Generate AI nudge email via Gemini
+          - id: generate_nudge_email
+            type: io.kestra.plugin.scripts.python.Script
+            description: "Uses Gemini to write a personalised coaching nudge email."
+            timeout: PT5M
+            beforeCommands:
+              - pip install -q google-generativeai
+            script: |
+              import google.generativeai as genai
+              from kestra import Kestra
+
+              genai.configure(api_key="YOUR_GEMINI_API_KEY_HERE")   # 🔑 replace with your key
+
+              model = genai.GenerativeModel(
+                  model_name="gemini-2.5-flash",
+                  system_instruction=(
+                      "You are a helpful recruitment coach. A candidate has been idle in our ATS system. "
+                      "Write a warm, encouraging email (under 150 words) giving 2-3 specific tips to "
+                      "improve their shortlisting chances for their target role. "
+                      "Be concrete and actionable. Write in flowing prose, no bullet points."
+                  ),
+              )
+
+              user_message = (
+                  "Candidate: {{ outputs.check_idle.vars.candidate_name }}, "
+                  "Role: {{ outputs.check_idle.vars.candidate_role }}, "
+                  "Score: {{ outputs.check_idle.vars.candidate_score }}/100, "
+                  "Stage: {{ outputs.check_idle.vars.candidate_stage }}, "
+                  "Idle days: {{ outputs.check_idle.vars.days_idle }}"
+              )
+
+              response = model.generate_content(user_message)
+              Kestra.outputs({"nudge_email_body": response.text.strip()})
+
+          # 2d. Send nudge email
+          - id: send_nudge
+            type: io.kestra.plugin.notifications.mail.MailSend
+            description: "Delivers the Gemini nudge coaching email to the candidate."
+            retry:
+              type: constant
+              maxAttempt: 2
+              interval: PT30S
+            from: umeshgupta050104@gmail.com
+            to: "{{ outputs.check_idle.vars.candidate_email | trim }}"
+            subject: "Still interested in {{ outputs.check_idle.vars.candidate_role }}? Here are some tips"
+            htmlTextContent: |
+              <html><body style="font-family:Arial,sans-serif;color:#222;line-height:1.6;">
+                <p>Dear {{ outputs.check_idle.vars.candidate_name }},</p>
+                <p>{{ outputs.generate_nudge_email.vars.nudge_email_body }}</p>
+                <p>We are rooting for you — feel free to reply to this email with any questions.</p>
+                <p>Best regards,<br/>The Recruitment Team</p>
+              </body></html>
+            host: smtp.gmail.com
+            port: 465
+            username: umeshgupta050104@gmail.com
+            password: "rhdf pdnq utpt gynt"
+
+          # 2e. Stamp last_nudged on the profile
+          - id: prepare_nudge_stamp
+            type: io.kestra.plugin.scripts.python.Script
+            description: "Builds an updated profile JSON with last_nudged stamped."
+            script: |
+              import json
+              from datetime import datetime, timezone
+              from kestra import Kestra
+
+              profile_json = """{{ outputs.get_profile.value ?? '{}' }}"""
+              try:
+                  profile = json.loads(profile_json)
+              except Exception:
+                  profile = {}
+              profile["last_nudged"] = datetime.now(timezone.utc).isoformat()
+              Kestra.outputs({"updated_profile": json.dumps(profile)})
+
+          - id: update_last_nudged
+            type: io.kestra.plugin.core.kv.Set
+            description: "Writes the updated profile with last_nudged back to the KV store."
+            key: "{{ taskrun.value }}"
+            namespace: recruitment.workflows
+            value: "{{ outputs.prepare_nudge_stamp.vars.updated_profile }}"
+
+triggers:
+  - id: daily_idle_scan
+    type: io.kestra.plugin.core.trigger.Schedule
+    description: "Fires every day at 09:00 UTC to scan for idle profiles."
+    cron: "0 9 * * *"
+
+errors:
+  - id: on_failure
+    type: io.kestra.plugin.core.flow.Subflow
+    description: "On any task failure, delegate to the centralised error handler."
+    namespace: recruitment.workflows
+    flowId: wf4_error_handler
+    inputs:
+      candidate_name: "idle-checker-batch"
+      candidate_email: ""
+      workflow_id: "{{ flow.id }}"
+      error_message: "{{ error.message ?? 'Unknown error in wf3_idle_checker' }}"

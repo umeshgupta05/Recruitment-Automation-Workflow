@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════
+   BASE STYLES
+   ═══════════════════════════════════════════════ */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #334155;
+  border-radius: 3px;
+}
+
+body {
+  background: #1a1d23;
+  min-height: 100vh;
+}
+
+/* ═══════════════════════════════════════════════
+   LOADING SKELETON ANIMATION
+   ═══════════════════════════════════════════════ */
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #22262e 25%,
+    #2a2f38 50%,
+    #22262e 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* ═══════════════════════════════════════════════
+   TOAST NOTIFICATIONS
+   ═══════════════════════════════════════════════ */
+
+@keyframes toast-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes toast-out {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+.toast-enter {
+  animation: toast-in 0.3s ease-out forwards;
+}
+
+.toast-exit {
+  animation: toast-out 0.3s ease-in forwards;
+}
+
+/* ═══════════════════════════════════════════════
+   CUSTOM UTILITY CLASSES
+   ═══════════════════════════════════════════════ */
+
+@layer components {
+  .card {
+    @apply bg-surface-secondary border border-neutral-700/40 rounded-xl p-5;
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200 hover:border-neutral-600/60 hover:bg-surface-tertiary;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg 
+           font-medium text-sm transition-all duration-200 
+           hover:bg-primary-500 active:bg-primary-700
+           focus:outline-none focus:ring-2 focus:ring-primary-500/40;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-4 py-2.5 bg-surface-tertiary text-neutral-300 
+           border border-neutral-600/50 rounded-lg font-medium text-sm transition-all duration-200
+           hover:bg-surface-elevated hover:text-neutral-100 hover:border-neutral-500/60
+           focus:outline-none focus:ring-2 focus:ring-neutral-500/30;
+  }
+
+  .input-field {
+    @apply w-full px-3.5 py-2.5 bg-surface-tertiary border border-neutral-600/50 rounded-lg
+           text-neutral-200 text-sm placeholder:text-neutral-500
+           focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500/50
+           transition-all duration-200;
+  }
+
+  .select-field {
+    @apply input-field appearance-none cursor-pointer;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   LIVE DOT PULSE
+   ═══════════════════════════════════════════════ */
+
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.4);
+  }
+}
+
+.dot-pulse {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════
+   CIRCULAR SCORE GAUGE
+   ═══════════════════════════════════════════════ */
+
+@keyframes gauge-fill {
+  from {
+    stroke-dashoffset: 283;
+  }
+}
+
+.gauge-animated {
+  animation: gauge-fill 1s ease-out forwards;
+}
+
+/* ═══════════════════════════════════════════════
+   FADE IN
+   ═══════════════════════════════════════════════ */
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out forwards;
+}

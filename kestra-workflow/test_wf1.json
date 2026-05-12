@@ -1,0 +1,8 @@
+{
+  "candidate_name": "PriyaSharma",
+  "candidate_email": "priya.sharma@example.com",
+  "job_title": "Senior Python Engineer",
+  "score_threshold": 70,
+  "job_description": "We are looking for a Senior Python Engineer with 5+ years of experience building scalable backend systems. Required skills: Python, FastAPI or Django, PostgreSQL, Docker, Kubernetes, CI/CD pipelines, REST API design.",
+  "resume_text": "PriyaSharma | priya.sharma@example.com | Senior Software Engineer with 7 years in Python backend development. Led FastAPI microservices on Kubernetes GKE, 15M events per day. PostgreSQL tuning, GitHub Actions CI/CD, AWS and GCP. Django REST APIs, Docker, Redis. B.Tech Computer Science IIT Bombay 2016."
+}

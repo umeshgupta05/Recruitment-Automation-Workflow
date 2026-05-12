@@ -1,0 +1,187 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# WORKFLOW 2: STAGE CHANGE NOTIFIER
+# Namespace : recruitment.workflows
+# Purpose   : Recruiter (or automated system) triggers this when moving a
+#             candidate to a new pipeline stage. Sends a professional
+#             stage-update email and updates the KV store.
+# ─────────────────────────────────────────────────────────────────────────────
+
+id: wf2_stage_notifier
+namespace: recruitment.workflows
+description: "Sends a stage-change email to the candidate and updates KV state."
+
+# ── INPUTS ───────────────────────────────────────────────────────────────────
+inputs:
+  - id: candidate_name
+    type: STRING
+    description: "Full name of the candidate"
+
+  - id: candidate_email
+    type: STRING
+    description: "Email address of the candidate"
+
+  - id: job_title
+    type: STRING
+    description: "Job title the candidate applied for"
+
+  - id: new_stage
+    type: STRING
+    description: "New pipeline stage: shortlisted | interview_scheduled | offer_extended | rejected"
+
+  - id: extra_notes
+    type: STRING
+    defaults: ""
+    description: "Optional extra message to include in the candidate email"
+
+# ── TASKS ────────────────────────────────────────────────────────────────────
+tasks:
+  # ── TASK 1: Build the stage-specific email body ───────────────────────────
+  - id: build_stage_email
+    type: io.kestra.plugin.scripts.python.Script
+    description: "Selects the appropriate email template based on new_stage and merges extra_notes."
+    beforeCommands:
+      - pip install -q kestra
+    script: |
+      from kestra import Kestra
+
+      candidate_name = "{{ inputs.candidate_name }}"
+      job_title      = "{{ inputs.job_title }}"
+      new_stage      = "{{ inputs.new_stage }}"
+      extra_notes    = "{{ inputs.extra_notes }}"
+
+      # ── Email templates per stage ──────────────────────────────────────────
+      templates = {
+          "shortlisted": (
+              f"Dear {candidate_name},\n\n"
+              f"Great news! After reviewing your application for the "
+              f"<strong>{job_title}</strong> role, we are pleased to inform you "
+              f"that you have been shortlisted for the next stage of our selection process.\n\n"
+              f"Our team was impressed by your background and we look forward to learning "
+              f"more about you. We will be in touch shortly with further details."
+          ),
+          "interview_scheduled": (
+              f"Dear {candidate_name},\n\n"
+              f"We are excited to move forward with your application for "
+              f"<strong>{job_title}</strong>. We would like to invite you to an interview.\n\n"
+              f"Please check your calendar for a meeting invite that will be sent separately. "
+              f"If the time does not work for you, reply to this email and we will find "
+              f"an alternative slot."
+          ),
+          "offer_extended": (
+              f"Dear {candidate_name},\n\n"
+              f"Congratulations! We are thrilled to extend you a formal offer for the "
+              f"<strong>{job_title}</strong> position.\n\n"
+              f"A detailed offer letter will follow this email. Please review it carefully "
+              f"and do not hesitate to reach out if you have any questions."
+          ),
+          "rejected": (
+              f"Dear {candidate_name},\n\n"
+              f"Thank you for the time and effort you invested in your application for "
+              f"<strong>{job_title}</strong>. After careful consideration, we have decided "
+              f"to move forward with other candidates whose experience more closely matches "
+              f"our current requirements.\n\n"
+              f"We genuinely appreciate your interest in our organisation and encourage you "
+              f"to apply for future openings that match your profile."
+          ),
+      }
+
+      # Fallback for unknown stages
+      body = templates.get(
+          new_stage,
+          f"Dear {candidate_name},\n\nWe have an update regarding your "
+          f"<strong>{job_title}</strong> application. Your current stage is: {new_stage}."
+      )
+
+      # Append extra notes from recruiter if provided
+      notes_section = ""
+      if extra_notes.strip():
+          notes_section = f"\n\n<em>Additional notes from your recruiter:</em><br/>{extra_notes}"
+
+      email_body = f"""
+      <html>
+      <body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6;">
+        <p>{body.replace(chr(10), "<br/>")}</p>
+        {notes_section}
+        <br/>
+        <p>Best regards,<br/>The Recruitment Team</p>
+      </body>
+      </html>
+      """
+
+      Kestra.outputs({"email_body": email_body})
+
+  # ── TASK 2: Send the stage update email to the candidate ──────────────────
+  - id: send_stage_email
+    type: io.kestra.plugin.notifications.mail.MailSend
+    description: "Delivers the stage update email to the candidate."
+    retry:
+      type: constant
+      maxAttempt: 2
+      interval: PT30S
+    from: "umeshgupta050104@gmail.com"
+    to: "{{ inputs.candidate_email | trim }}"
+    subject: "Update on your {{ inputs.job_title }} application"
+    htmlTextContent: "{{ outputs.build_stage_email.vars.email_body }}"
+    host: smtp.gmail.com
+    port: 465
+    username: umeshgupta050104@gmail.com
+    password: "rhdf pdnq utpt gynt"
+
+  # ── TASK 3: Normalize candidate key ─────────────────────────────────────
+  - id: normalize_candidate_key
+    type: io.kestra.plugin.scripts.python.Script
+    description: "Builds a KV-safe key from the candidate email local part."
+    beforeCommands:
+      - pip install -q kestra
+    script: |
+      import re
+      from kestra import Kestra
+
+      raw = """{{ inputs.candidate_email }}"""
+      local_part = raw.split("@", 1)[0].strip()
+      local_part = re.sub(r"[^A-Za-z0-9._%+-]", "", local_part)
+      if not local_part:
+          raise ValueError("Invalid candidate_email local part for KV key")
+      Kestra.outputs({"email_key": local_part})
+
+  # ── TASK 3: Update candidate stage in KV store ────────────────────────────
+  #    Uses the native KV plugin (no REST API auth needed)
+  - id: update_kv_state
+    type: io.kestra.plugin.core.kv.Set
+    description: "Writes the updated candidate profile (with new stage) to the KV store."
+    key: "candidate_{{ outputs.normalize_candidate_key.vars.email_key }}"
+    namespace: recruitment.workflows
+    value: |
+      {
+        "name":         "{{ inputs.candidate_name }}",
+        "email":        "{{ inputs.candidate_email }}",
+        "role":         "{{ inputs.job_title }}",
+        "stage":        "{{ inputs.new_stage }}",
+        "last_updated": "{{ now() }}"
+      }
+
+# ── TRIGGERS ─────────────────────────────────────────────────────────────────
+triggers:
+  - id: stage_update_webhook
+    type: io.kestra.plugin.core.trigger.Webhook
+    description: "Webhook for recruiters (or integrations) to push stage changes."
+    key: stage-update-webhook
+    inputs:
+      candidate_name: "{{ trigger.body.candidate_name }}"
+      candidate_email: "{{ trigger.body.candidate_email }}"
+      job_title: "{{ trigger.body.job_title }}"
+      new_stage: "{{ trigger.body.new_stage }}"
+      extra_notes: "{{ trigger.body.extra_notes ?? '' }}"
+
+# ── ERROR HANDLER ─────────────────────────────────────────────────────────────
+errors:
+  - id: on_failure
+    type: io.kestra.plugin.core.flow.Subflow
+    description: "On any task failure, delegate to the centralised error handler."
+    namespace: recruitment.workflows
+    flowId: wf4_error_handler
+    inputs:
+      candidate_name: "{{ inputs.candidate_name }}"
+      candidate_email: "{{ inputs.candidate_email }}"
+      workflow_id: "{{ flow.id }}"
+      error_message: "{{ error.message ?? 'Unknown error in wf2_stage_notifier' }}"

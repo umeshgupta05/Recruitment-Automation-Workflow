@@ -1,0 +1,362 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# WORKFLOW 1: ATS SCORER  (Gemini edition)
+# Namespace : recruitment.workflows
+# ─────────────────────────────────────────────────────────────────────────────
+
+id: wf1_ats_scorer
+namespace: recruitment.workflows
+description: "AI-powered ATS scoring — routes candidates to recruiter or sends rejection."
+
+inputs:
+  - id: candidate_name
+    type: STRING
+    defaults: "umesh"
+    description: "Full name of the candidate"
+  - id: candidate_email
+    type: STRING
+    defaults: "228w1a0538@vrsec.ac.in"
+    description: "Email address of the candidate"
+  - id: job_title
+    type: STRING
+    defaults: "Software Development Engineer (SDE)"
+    description: "Job title the candidate is applying for"
+  - id: resume_text
+    type: STRING
+    defaults: |
+      Umesh Gupta Pedamallu
+      Phone: +91 6281784716
+      Email: saiumeshgupta@gmail.com
+      Location: Vijayawada, India
+      LinkedIn: linkedin.com/in/umesh-gupta
+      GitHub: github.com/umeshgupta05
+      Website: umeshguptapedamallu.in
+
+      Profile
+      Enthusiastic and detail-oriented Computer Science graduate with a strong interest in software development, cloud technologies, and problem-solving. Experienced in building full-stack applications, developing AI-powered tools, and working with databases. Passionate about learning new technologies, collaborating in team environments, and contributing to impactful projects through hands-on experience.
+
+      Education
+      Bachelor of Technology in Computer Science and Engineering (2022 - 2026)
+      Honors in Full Stack Development
+      CGPA: 9.26 / 10.0
+      Velagapudi Ramakrishna Siddhartha Engineering College, Vijayawada
+
+      Technical Skills
+      Programming Languages: Java, Python, JavaScript, SQL
+      Frameworks & Web Technologies: React.js, Redux, Tanstack, Spring Boot, Express.js, REST APIs, Docker
+      Cloud & Platforms: AWS (EC2, S3, IAM, VPC, CloudWatch)
+      Databases: Oracle, MongoDB
+      AI / ML: Machine Learning, CNN, AI Assisted Coding
+      Developer Tools: Git, GitHub, Postman, IntelliJ IDE, VS Code, Google Colab
+
+      Professional Experience
+      Web Developer & Cloud Integration Intern (Nov 2025 - Mar 2026)
+      SkillDzire Technologies Pvt. Ltd (Remote)
+      - Developed and deployed 3 full-stack applications, improving performance by 25%.
+      - Integrated cloud services (AWS) for hosting, storage, and deployment.
+      - Designed 10 RESTful APIs with authentication and database integration.
+
+      Mobile Application Developer (Jan 2025 - Jun 2025)
+      DeepMediQ (Remote)
+      - Engineered a cross-platform mobile application using React Native with Expo.
+      - Integrated frontend with backend REST APIs, enabling real-time AI responses.
+    description: "Raw resume text (plain text or lightly formatted)"
+  - id: job_description
+    type: STRING
+    defaults: |
+      Software Development Engineer (SDE)
+
+      We are looking for a passionate Software Development Engineer to design, develop,
+      and maintain scalable software applications. Strong problem-solving skills,
+      knowledge of data structures & algorithms, and experience with modern development
+      technologies required.
+
+      Requirements
+      - Strong knowledge of Java, Python, or JavaScript
+      - Understanding of DBMS, APIs, OOPs, and software development principles
+      - Familiarity with Git and modern frameworks/tools
+      - Bachelor's degree in Computer Science or related field
+    description: "Full job description to score against"
+  - id: score_threshold
+    type: INT
+    defaults: 70
+    description: "Minimum ATS score required to pass (default 70)"
+  - id: backend_base_url
+    type: STRING
+    defaults: "http://localhost:3001/api"
+    description: "Backend base URL for syncing ATS results"
+
+tasks:
+  # ── TASK 1: Clean resume text ─────────────────────────────────────────────
+  - id: extract_text
+    type: io.kestra.plugin.scripts.python.Script
+    description: "Strips HTML, normalises whitespace, removes control characters."
+    beforeCommands:
+      - pip install -q kestra beautifulsoup4
+    script: |
+      import re
+      from bs4 import BeautifulSoup
+      from kestra import Kestra
+
+      raw = """{{ inputs.resume_text }}"""
+      soup = BeautifulSoup(raw, "html.parser")
+      text = soup.get_text(separator=" ")
+      text = re.sub(r'\s+', ' ', text).strip()
+      text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+      Kestra.outputs({"cleaned_resume": text})
+
+  # ── TASK 2: Gemini ATS score ──────────────────────────────────────────────
+  - id: ai_ats_score
+    type: io.kestra.plugin.scripts.python.Script
+    description: "Calls Gemini API and parses the ATS score JSON response."
+    timeout: PT5M
+    beforeCommands:
+      - pip install -q kestra google-genai
+    script: |
+      import json, re
+      from google import genai
+      from google.genai import types
+      from kestra import Kestra
+
+      client = genai.Client(api_key="AIzaSyA3f9qQJKtcu4yMI497_P6YfquwTLwhhRo")
+      config = types.GenerateContentConfig(
+          system_instruction=(
+              "You are a professional ATS (Applicant Tracking System). "
+              "Given a job description and a resume, return ONLY valid JSON with this schema:\n"
+              '{ "score": integer 0-100, "passed": boolean, "strengths": [string], '
+              '"gaps": [string], "recommendation": string }\n'
+              "Score honestly. passed = true if score >= {{ inputs.score_threshold }}."
+          )
+      )
+      job_description = """{{ inputs.job_description }}"""
+      cleaned_resume = """{{ outputs.extract_text.vars.cleaned_resume }}"""
+      user_message = "JOB:\n" + job_description + "\n\nRESUME:\n" + cleaned_resume
+      response = client.models.generate_content(
+          model="gemini-2.5-flash",
+          contents=user_message,
+          config=config,
+      )
+      raw_content = re.sub(r'^```(?:json)?\s*', '', response.text.strip())
+      raw_content = re.sub(r'\s*```$', '', raw_content)
+      result = json.loads(raw_content)
+      Kestra.outputs({
+          "score":          result["score"],
+          "passed":         result["passed"],
+          "strengths":      json.dumps(result.get("strengths", [])),
+          "gaps":           json.dumps(result.get("gaps", [])),
+          "recommendation": result.get("recommendation", ""),
+          "strengths_json": json.dumps(result.get("strengths", [])),
+          "gaps_json":      json.dumps(result.get("gaps", [])),
+          "recommendation_json": json.dumps(result.get("recommendation", "")),
+      })
+
+  # ── TASK 2b: Normalize candidate email ───────────────────────────────────
+  - id: normalize_candidate_email
+    type: io.kestra.plugin.scripts.python.Script
+    description: "Sanitizes candidate email to avoid invalid address errors."
+    beforeCommands:
+      - pip install -q kestra
+    script: |
+      import re
+      from kestra import Kestra
+
+      raw = """{{ inputs.candidate_email }}"""
+      email = re.sub(r"[^A-Za-z0-9._%+-@]", "", raw).strip()
+      if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+          raise ValueError(f"Invalid candidate_email after cleaning: '{email}'")
+      email_key = email.split("@", 1)[0]
+      if not email_key:
+          raise ValueError("Invalid candidate_email local part for KV key")
+      Kestra.outputs({"clean_email": email, "email_key": email_key})
+
+  # ── TASK 3: Route decision ────────────────────────────────────────────────
+  - id: route_decision
+    type: io.kestra.plugin.core.flow.If
+    description: "Routes to recruiter (passed) or rejection branch (failed)."
+    condition: "{{ outputs.ai_ats_score.vars.passed }}"
+
+    then:
+      # 3a. Notify recruiter
+      - id: notify_recruiter
+        type: io.kestra.plugin.email.MailSend
+        description: "Emails the recruiter with the shortlisted candidate summary."
+        retry:
+          type: constant
+          maxAttempt: 2
+          interval: PT30S
+        from: "umeshgupta050104@gmail.com"
+        to: "{{ outputs.normalize_candidate_email.vars.clean_email }}"
+        subject: "New shortlisted candidate: {{ inputs.candidate_name }} for {{ inputs.job_title }}"
+        htmlTextContent: |
+          <html><body style="font-family:Arial,sans-serif;color:#222;">
+            <h2>New Shortlisted Candidate</h2>
+            <table style="border-collapse:collapse;width:100%;">
+              <tr><td><strong>Name</strong></td><td>{{ inputs.candidate_name }}</td></tr>
+              <tr><td><strong>Email</strong></td><td>{{ inputs.candidate_email }}</td></tr>
+              <tr><td><strong>Role</strong></td><td>{{ inputs.job_title }}</td></tr>
+              <tr><td><strong>ATS Score</strong></td><td>{{ outputs.ai_ats_score.vars.score }} / 100</td></tr>
+            </table>
+            <h3>Strengths</h3><p>{{ outputs.ai_ats_score.vars.strengths }}</p>
+            <h3>Gaps</h3><p>{{ outputs.ai_ats_score.vars.gaps }}</p>
+            <h3>Recommendation</h3><p>{{ outputs.ai_ats_score.vars.recommendation }}</p>
+            <p style="color:#555;font-size:12px;">
+              Trigger <em>wf2_stage_notifier</em> to update the candidate stage.
+            </p>
+          </body></html>
+        host: smtp.gmail.com
+        port: 465
+        username: umeshgupta050104@gmail.com
+        password: "rhdf pdnq utpt gynt"
+
+      # 3b. Save shortlisted state
+      - id: save_state
+        type: io.kestra.plugin.core.kv.Set
+        description: "Saves shortlisted candidate state to the Kestra KV store."
+        key: "candidate_{{ outputs.normalize_candidate_email.vars.email_key }}"
+        value: |
+          {
+            "name":         "{{ inputs.candidate_name }}",
+            "email":        "{{ inputs.candidate_email }}",
+            "role":         "{{ inputs.job_title }}",
+            "score":        {{ outputs.ai_ats_score.vars.score }},
+            "stage":        "shortlisted",
+            "last_updated": "{{ now() }}"
+          }
+        namespace: recruitment.workflows
+
+      - id: update_candidate_db
+        type: io.kestra.plugin.core.http.Request
+        description: "Syncs ATS results to the recruitment UI database."
+        method: POST
+        uri: "{{ inputs.backend_base_url }}/workflows/ats-result"
+        headers:
+          Content-Type: application/json
+        body: |
+          {
+            "candidate_email": "{{ inputs.candidate_email }}",
+            "score": {{ outputs.ai_ats_score.vars.score }},
+            "strengths": {{ outputs.ai_ats_score.vars.strengths_json }},
+            "gaps": {{ outputs.ai_ats_score.vars.gaps_json }},
+            "recommendation": {{ outputs.ai_ats_score.vars.recommendation_json }},
+            "stage": "shortlisted",
+            "execution_id": "{{ execution.id }}"
+          }
+
+    else:
+      # 3c. Generate rejection email via Gemini
+      - id: generate_rejection
+        type: io.kestra.plugin.scripts.python.Script
+        description: "Calls Gemini API to write a kind, specific rejection email."
+        timeout: PT5M
+        beforeCommands:
+          - pip install -q kestra google-genai
+        script: |
+          from google import genai
+          from google.genai import types
+          from kestra import Kestra
+
+          client = genai.Client(api_key="AIzaSyA3f9qQJKtcu4yMI497_P6YfquwTLwhhRo")
+          config = types.GenerateContentConfig(
+              system_instruction=(
+                  "You are a kind, professional recruiter writing a rejection email. "
+                  "Be specific about why the candidate did not pass and give 2-3 actionable "
+                  "improvement tips. Keep it under 200 words. "
+                  "Do not say 'unfortunately' or 'regret'."
+              )
+          )
+          candidate_name = """{{ inputs.candidate_name }}"""
+          job_title = """{{ inputs.job_title }}"""
+          gaps = """{{ outputs.ai_ats_score.vars.gaps }}"""
+          score = {{ outputs.ai_ats_score.vars.score }}
+          user_message = (
+              f"Candidate: {candidate_name}, "
+              f"Role: {job_title}, "
+              f"Score: {score}/100, "
+              f"Gaps: {gaps}"
+          )
+          response = client.models.generate_content(
+              model="gemini-2.5-flash",
+              contents=user_message,
+              config=config,
+          )
+          Kestra.outputs({"rejection_email_body": response.text.strip()})
+
+      # 3d. Send rejection email
+      - id: send_rejection
+        type: io.kestra.plugin.email.MailSend
+        description: "Sends the personalised rejection email to the candidate."
+        retry:
+          type: constant
+          maxAttempt: 2
+          interval: PT30S
+        from: "umeshgupta050104@gmail.com"
+        to: "{{ outputs.normalize_candidate_email.vars.clean_email }}"
+        subject: "Your application for {{ inputs.job_title }} — update"
+        htmlTextContent: |
+          <html><body style="font-family:Arial,sans-serif;color:#222;">
+            <p>Dear {{ inputs.candidate_name }},</p>
+            <p>{{ outputs.generate_rejection.vars.rejection_email_body }}</p>
+            <p>Best regards,<br/>The Recruitment Team</p>
+          </body></html>
+        host: smtp.gmail.com
+        port: 465
+        username: umeshgupta050104@gmail.com
+        password: "rhdf pdnq utpt gynt"
+
+      # 3e. Save rejected state
+      - id: save_state_rejected
+        type: io.kestra.plugin.core.kv.Set
+        description: "Saves rejected candidate state to the Kestra KV store."
+        key: "candidate_{{ outputs.normalize_candidate_email.vars.email_key }}"
+        value: |
+          {
+            "name":         "{{ inputs.candidate_name }}",
+            "email":        "{{ inputs.candidate_email }}",
+            "role":         "{{ inputs.job_title }}",
+            "score":        {{ outputs.ai_ats_score.vars.score }},
+            "stage":        "rejected",
+            "last_updated": "{{ now() }}"
+          }
+        namespace: recruitment.workflows
+
+      - id: update_candidate_db_rejected
+        type: io.kestra.plugin.core.http.Request
+        description: "Syncs ATS results to the recruitment UI database."
+        method: POST
+        uri: "{{ inputs.backend_base_url }}/workflows/ats-result"
+        headers:
+          Content-Type: application/json
+        body: |
+          {
+            "candidate_email": "{{ inputs.candidate_email }}",
+            "score": {{ outputs.ai_ats_score.vars.score }},
+            "strengths": {{ outputs.ai_ats_score.vars.strengths_json }},
+            "gaps": {{ outputs.ai_ats_score.vars.gaps_json }},
+            "recommendation": {{ outputs.ai_ats_score.vars.recommendation_json }},
+            "stage": "rejected",
+            "execution_id": "{{ execution.id }}"
+          }
+
+triggers:
+  - id: resume_upload_webhook
+    type: io.kestra.plugin.core.trigger.Webhook
+    description: "HTTP webhook accepting JSON body with resume and job details."
+    key: ats-scorer-webhook
+    inputs:
+      candidate_name: "{{ trigger.body.candidate_name }}"
+      candidate_email: "{{ trigger.body.candidate_email }}"
+      job_title: "{{ trigger.body.job_title }}"
+      resume_text: "{{ trigger.body.resume_text }}"
+      job_description: "{{ trigger.body.job_description }}"
+      score_threshold: "{{ trigger.body.score_threshold ?? 70 }}"
+
+errors:
+  - id: on_failure
+    type: io.kestra.plugin.core.flow.Subflow
+    description: "On any task failure, call the centralised error handler subflow."
+    namespace: recruitment.workflows
+    flowId: wf4_error_handler
+    inputs:
+      candidate_name: "{{ inputs.candidate_name }}"
+      candidate_email: "{{ inputs.candidate_email }}"
+      workflow_id: "{{ flow.id }}"
+      error_message: "{{ error.message ?? 'Unknown error in wf1_ats_scorer' }}"
