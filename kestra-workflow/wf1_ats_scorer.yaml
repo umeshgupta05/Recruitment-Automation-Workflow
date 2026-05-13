@@ -14,7 +14,7 @@ inputs:
     description: "Full name of the candidate"
   - id: candidate_email
     type: STRING
-    defaults: "228w1a0538@vrsec.ac.in"
+    defaults: ""
     description: "Email address of the candidate"
   - id: job_title
     type: STRING
@@ -24,10 +24,10 @@ inputs:
     type: STRING
     defaults: |
       Umesh Gupta Pedamallu
-      Phone: +91 6281784716
-      Email: saiumeshgupta@gmail.com
-      Location: Vijayawada, India
-      LinkedIn: linkedin.com/in/umesh-gupta
+      Phone: 
+      Email: 
+      Location: 
+      LinkedIn: 
       GitHub: github.com/umeshgupta05
       Website: umeshguptapedamallu.in
 
