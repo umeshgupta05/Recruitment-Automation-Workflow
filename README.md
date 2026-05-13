@@ -4,6 +4,32 @@ A modern recruitment pipeline dashboard built with React + Express, powered by [
 
 ![Stack](https://img.shields.io/badge/React_18-blue) ![Stack](https://img.shields.io/badge/Express.js-black) ![Stack](https://img.shields.io/badge/Kestra-purple) ![Stack](https://img.shields.io/badge/SQLite-green)
 
+## Screenshots
+
+### Dashboard Overview
+![Dashboard Overview](dashboard.png)
+The main **Recruitment Hub** dashboard displays real-time pipeline metrics — total applicants, shortlisted count, scheduled interviews, and candidates idle for more than 14 days. The bottom section shows a live candidate table with AI scores and pipeline stages, alongside a live feed of Kestra workflow run statuses.
+
+---
+
+### Kestra Workflow Executions
+![Kestra Workflow Executions](kestra-executions.png)
+The Kestra UI showing execution history for the `wf1_ats_scorer` workflow. Each resume upload triggers a new execution; the timeline chart and table surface duration, status (SUCCESS / WARNING / FAILED), and timestamps — making it easy to debug or rerun failed scoring jobs.
+
+---
+
+### Candidate Detail — Profile & Workflow Steps
+![Candidate Detail - Profile and Workflow](candidate-detail-overview.png)
+The **Candidate Detail** page shows the candidate's profile card, an AI-generated score (0–100 gauge), identified strengths, and a step-by-step breakdown of the Kestra workflow execution (text extraction → AI scoring → routing → rejection or advancement).
+
+---
+
+### Candidate Detail — AI Analysis & Notes
+![Candidate Detail - AI Analysis](candidate-detail-analysis.png)
+The lower section of the Candidate Detail page displays the AI-generated strengths, skill gaps, and a plain-English **AI Recommendation** summarising fit for the role. Recruiters can also add and save private notes against each candidate directly from this view.
+
+---
+
 ## Prerequisites
 
 - **Node.js 18+** and **pnpm** installed
