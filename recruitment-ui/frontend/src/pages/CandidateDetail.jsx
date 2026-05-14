@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   Mail,
   Phone,
@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ChevronRight,
   RefreshCw,
+  Trash2,
   Save,
   Loader2,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import WorkflowStatus from "../components/WorkflowStatus";
 import { getInitials, getAvatarColor } from "../components/CandidateTable";
 import { getScoreColor } from "../components/ScoreBadge";
 import { useToast } from "../components/Toast";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 const STAGES = [
   "applied",
@@ -36,6 +38,7 @@ const STAGE_LABELS = {
 
 export default function CandidateDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { addToast } = useToast();
   const [candidate, setCandidate] = useState(null);
   const [execution, setExecution] = useState(null);
@@ -45,6 +48,8 @@ export default function CandidateDetail() {
   const [notesLoading, setNotesLoading] = useState(false);
   const [retryLoading, setRetryLoading] = useState(false);
   const [refreshLoading, setRefreshLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const prevStageRef = useRef(null);
 
   const fetchCandidate = useCallback(async () => {
@@ -178,6 +183,20 @@ export default function CandidateDetail() {
     }
   }
 
+  async function handleDeleteCandidate() {
+    if (!candidate) return;
+    setDeleteLoading(true);
+    try {
+      await client.delete(`/candidates/${candidate.id}`);
+      addToast("Candidate deleted", "success");
+      navigate("/candidates");
+    } catch (err) {
+      addToast(`Delete failed: ${err.message}`, "error");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   if (loading) return <DetailSkeleton />;
   if (!candidate) {
     return (
@@ -189,228 +208,270 @@ export default function CandidateDetail() {
 
   const strengths = safeJsonParse(candidate.strengths);
   const gaps = safeJsonParse(candidate.gaps);
-  const scoreColors = getScoreColor(candidate.score);
-  const strokeOffset = 283 - (283 * Math.min(candidate.score, 100)) / 100;
+  const hasScore =
+    candidate.score !== null &&
+    candidate.score !== undefined &&
+    !isNaN(candidate.score);
+  const scoreColors = hasScore
+    ? getScoreColor(candidate.score)
+    : { text: "text-neutral-400" };
+  const strokeOffset = hasScore
+    ? 283 - (283 * Math.min(candidate.score, 100)) / 100
+    : 283;
 
   const executionStatus =
     execution?.state?.current || execution?.status || "UNKNOWN";
 
+  const isRejected = candidate.stage === "rejected";
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 animate-fade-in">
-      {/* Left column — Candidate card */}
-      <div className="lg:col-span-2 space-y-6">
-        <div className="card text-center">
-          <div
-            className={`w-20 h-20 mx-auto rounded-full border-2 flex items-center justify-center text-2xl font-bold mb-4 ${getAvatarColor(candidate.name)}`}
-          >
-            {getInitials(candidate.name)}
-          </div>
-          <h2 className="text-xl font-bold text-neutral-100">
-            {candidate.name}
-          </h2>
-          <p className="text-sm text-neutral-400 mt-1">
-            {candidate.job_title || "No role specified"}
-          </p>
+    <>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 animate-fade-in">
+        {/* Left column — Candidate card */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="card text-center">
+            <div
+              className={`w-20 h-20 mx-auto rounded-full border-2 flex items-center justify-center text-2xl font-bold mb-4 ${getAvatarColor(candidate.name)}`}
+            >
+              {getInitials(candidate.name)}
+            </div>
+            <h2 className="text-xl font-bold text-neutral-100">
+              {candidate.name}
+            </h2>
+            <p className="text-sm text-neutral-400 mt-1">
+              {candidate.job_title || "No role specified"}
+            </p>
 
-          <div className="flex items-center justify-center gap-4 mt-4 text-sm text-neutral-400">
-            <span className="flex items-center gap-1.5">
-              <Mail className="w-3.5 h-3.5" />
-              {candidate.email}
-            </span>
-          </div>
-          <div className="flex items-center justify-center gap-4 mt-2 text-sm text-neutral-400">
-            {candidate.phone && (
+            <div className="flex items-center justify-center gap-4 mt-4 text-sm text-neutral-400">
               <span className="flex items-center gap-1.5">
-                <Phone className="w-3.5 h-3.5" />
-                {candidate.phone}
+                <Mail className="w-3.5 h-3.5" />
+                {candidate.email}
               </span>
-            )}
-            <span className="flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5" />
-              {new Date(candidate.created_at).toLocaleDateString()}
-            </span>
-          </div>
-        </div>
-
-        {/* AI Score Gauge */}
-        <div className="card">
-          <h3 className="text-sm font-semibold text-neutral-300 mb-4 text-center">
-            AI Score
-          </h3>
-          <div className="flex justify-center">
-            <div className="relative w-36 h-36">
-              <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="45"
-                  fill="none"
-                  stroke="#334155"
-                  strokeWidth="8"
-                />
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="45"
-                  fill="none"
-                  stroke={
-                    candidate.score >= 85
-                      ? "#10b981"
-                      : candidate.score >= 70
-                        ? "#f59e0b"
-                        : "#ef4444"
-                  }
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                  strokeDasharray="283"
-                  strokeDashoffset={strokeOffset}
-                  className="gauge-animated"
-                />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className={clsx("text-3xl font-bold", scoreColors.text)}>
-                  {candidate.score}
+            </div>
+            <div className="flex items-center justify-center gap-4 mt-2 text-sm text-neutral-400">
+              {candidate.phone && (
+                <span className="flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5" />
+                  {candidate.phone}
                 </span>
+              )}
+              <span className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5" />
+                {new Date(candidate.created_at).toLocaleDateString()}
+              </span>
+            </div>
+          </div>
+
+          {/* AI Score Gauge */}
+          <div className="card">
+            <h3 className="text-sm font-semibold text-neutral-300 mb-4 text-center">
+              AI Score
+            </h3>
+            <div className="flex justify-center">
+              <div className="relative w-36 h-36">
+                <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="45"
+                    fill="none"
+                    stroke="#334155"
+                    strokeWidth="8"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="45"
+                    fill="none"
+                    stroke={
+                      hasScore
+                        ? candidate.score >= 85
+                          ? "#10b981"
+                          : candidate.score >= 70
+                            ? "#f59e0b"
+                            : "#ef4444"
+                        : "#64748b"
+                    }
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    strokeDasharray="283"
+                    strokeDashoffset={strokeOffset}
+                    className={hasScore ? "gauge-animated" : ""}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span
+                    className={clsx("text-3xl font-bold", scoreColors.text)}
+                  >
+                    {hasScore ? candidate.score : "—"}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Strengths & Gaps */}
-        <div className="card">
-          <h3 className="text-sm font-semibold text-neutral-300 mb-3">
-            Strengths
-          </h3>
-          {strengths.length > 0 ? (
-            <ul className="space-y-2 mb-5">
-              {strengths.map((s, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2 text-sm text-neutral-300"
-                >
-                  <CheckCircle className="w-4 h-4 text-success-400 shrink-0 mt-0.5" />
-                  {s}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-neutral-500 mb-5">No strengths data</p>
-          )}
-
-          <h3 className="text-sm font-semibold text-neutral-300 mb-3">Gaps</h3>
-          {gaps.length > 0 ? (
-            <ul className="space-y-2 mb-5">
-              {gaps.map((g, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2 text-sm text-neutral-300"
-                >
-                  <AlertTriangle className="w-4 h-4 text-warning-400 shrink-0 mt-0.5" />
-                  {g}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-neutral-500 mb-5">No gaps identified</p>
-          )}
-
-          {candidate.ai_recommendation && (
-            <>
-              <h3 className="text-sm font-semibold text-neutral-300 mb-2">
-                AI Recommendation
-              </h3>
-              <p className="text-sm text-neutral-400 leading-relaxed bg-surface-tertiary/50 rounded-lg p-3 border border-neutral-700/30">
-                {candidate.ai_recommendation}
+            {!hasScore && (
+              <p className="text-xs text-neutral-500 text-center mt-3">
+                Workflow in progress...
               </p>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Right column */}
-      <div className="lg:col-span-3 space-y-6">
-        {/* Stage stepper */}
-        <div className="card">
-          <h3 className="text-sm font-semibold text-neutral-300 mb-4">
-            Pipeline stage
-          </h3>
-          <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-2">
-            {STAGES.map((stg, i) => {
-              const currentIdx = STAGES.indexOf(candidate.stage);
-              const isActive = stg === candidate.stage;
-              const isPast = i < currentIdx;
-              const isRejected = candidate.stage === "rejected";
-
-              return (
-                <div key={stg} className="flex items-center">
-                  <div
-                    className={clsx(
-                      "px-3 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap",
-                      isActive && !isRejected
-                        ? "bg-primary-600/20 text-primary-300 border border-primary-500/30"
-                        : isPast
-                          ? "bg-success-600/10 text-success-400 border border-success-500/20"
-                          : "bg-surface-tertiary text-neutral-500 border border-neutral-700/30",
-                    )}
-                  >
-                    {STAGE_LABELS[stg]}
-                  </div>
-                  {i < STAGES.length - 1 && (
-                    <ChevronRight className="w-4 h-4 text-neutral-600 mx-1 shrink-0" />
-                  )}
-                </div>
-              );
-            })}
+            )}
           </div>
 
-          {candidate.stage === "rejected" ? (
-            <div className="flex items-center gap-2 text-sm text-danger-400">
-              <StageBadge stage="rejected" />
-              <span>This candidate has been rejected</span>
-            </div>
-          ) : (
+          {/* Strengths & Gaps */}
+          <div className="card">
+            <h3 className="text-sm font-semibold text-neutral-300 mb-3">
+              Strengths
+            </h3>
+            {strengths.length > 0 ? (
+              <ul className="space-y-2 mb-5">
+                {strengths.map((s, i) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-2 text-sm text-neutral-300"
+                  >
+                    <CheckCircle className="w-4 h-4 text-success-400 shrink-0 mt-0.5" />
+                    {s}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-neutral-500 mb-5">No strengths data</p>
+            )}
+
+            <h3 className="text-sm font-semibold text-neutral-300 mb-3">
+              Gaps
+            </h3>
+            {gaps.length > 0 ? (
+              <ul className="space-y-2 mb-5">
+                {gaps.map((g, i) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-2 text-sm text-neutral-300"
+                  >
+                    <AlertTriangle className="w-4 h-4 text-warning-400 shrink-0 mt-0.5" />
+                    {g}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-neutral-500 mb-5">
+                No gaps identified
+              </p>
+            )}
+
+            {candidate.ai_recommendation && (
+              <>
+                <h3 className="text-sm font-semibold text-neutral-300 mb-2">
+                  AI Recommendation
+                </h3>
+                <p className="text-sm text-neutral-400 leading-relaxed bg-surface-tertiary/50 rounded-lg p-3 border border-neutral-700/30">
+                  {candidate.ai_recommendation}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Right column */}
+        <div className="lg:col-span-3 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {isRejected && (
+              <div className="flex items-center gap-2 rounded-lg border border-danger-500/30 bg-danger-500/10 px-3 py-2 text-sm font-semibold text-danger-200">
+                <AlertTriangle className="w-4 h-4" />
+                Rejected by ATS scoring workflow
+              </div>
+            )}
             <button
-              onClick={handleStageAdvance}
-              disabled={
-                stageLoading ||
-                STAGES.indexOf(candidate.stage) >= STAGES.length - 1
-              }
-              className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={() => setDeleteDialogOpen(true)}
+              disabled={deleteLoading}
+              className="btn-secondary border-danger-500/40 text-danger-200 hover:bg-danger-500/15 disabled:opacity-40 disabled:cursor-not-allowed font-semibold"
             >
-              {stageLoading ? (
+              {deleteLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <ChevronRight className="w-4 h-4" />
+                <Trash2 className="w-4 h-4" />
               )}
-              Move to next stage
+              Delete candidate
             </button>
-          )}
-        </div>
+          </div>
 
-        {/* Workflow timeline */}
-        <div className="card">
-          <h3 className="text-sm font-semibold text-neutral-300 mb-4">
-            Workflow execution
-          </h3>
-          {execution ? (
-            <>
-              <WorkflowStatus execution={execution} />
-              <div className="flex flex-wrap gap-3 mt-4">
-                <button
-                  onClick={handleRefreshExecution}
-                  disabled={refreshLoading}
-                  className="btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {refreshLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4" />
-                  )}
-                  Refresh status
-                </button>
-                {(executionStatus === "FAILED" ||
-                  executionStatus === "ERROR" ||
-                  executionStatus === "KILLED") && (
+          {/* Stage stepper */}
+          <div className="card">
+            <h3 className="text-sm font-semibold text-neutral-300 mb-4">
+              Pipeline stage
+            </h3>
+            <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-2">
+              {STAGES.map((stg, i) => {
+                const currentIdx = STAGES.indexOf(candidate.stage);
+                const isActive = stg === candidate.stage;
+                const isPast = i < currentIdx;
+                const isRejected = candidate.stage === "rejected";
+
+                return (
+                  <div key={stg} className="flex items-center">
+                    <div
+                      className={clsx(
+                        "px-3 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap",
+                        isActive && !isRejected
+                          ? "bg-primary-600/20 text-primary-700 dark:text-primary-300 border border-primary-500/30"
+                          : isPast
+                            ? "bg-success-600/10 text-success-400 border border-success-500/20"
+                            : "bg-surface-tertiary text-neutral-500 border border-neutral-700/30",
+                      )}
+                    >
+                      {STAGE_LABELS[stg]}
+                    </div>
+                    {i < STAGES.length - 1 && (
+                      <ChevronRight className="w-4 h-4 text-neutral-600 mx-1 shrink-0" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {candidate.stage === "rejected" ? (
+              <div className="flex items-center gap-2 text-sm text-danger-400">
+                <StageBadge stage="rejected" />
+                <span>Rejected by ATS scoring workflow</span>
+              </div>
+            ) : (
+              <button
+                onClick={handleStageAdvance}
+                disabled={
+                  stageLoading ||
+                  STAGES.indexOf(candidate.stage) >= STAGES.length - 1
+                }
+                className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {stageLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <ChevronRight className="w-4 h-4" />
+                )}
+                Move to next stage
+              </button>
+            )}
+          </div>
+
+          {/* Workflow timeline */}
+          <div className="card">
+            <h3 className="text-sm font-semibold text-neutral-300 mb-4">
+              Workflow execution
+            </h3>
+            {execution ? (
+              <>
+                <WorkflowStatus execution={execution} />
+                <div className="flex flex-wrap gap-3 mt-4">
+                  <button
+                    onClick={handleRefreshExecution}
+                    disabled={refreshLoading}
+                    className="btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {refreshLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4" />
+                    )}
+                    Refresh status
+                  </button>
                   <button
                     onClick={handleRetryExecution}
                     disabled={retryLoading}
@@ -421,48 +482,86 @@ export default function CandidateDetail() {
                     ) : (
                       <RefreshCw className="w-4 h-4" />
                     )}
-                    Retry ATS
+                    Retry
                   </button>
+                </div>
+              </>
+            ) : candidate.kestra_execution_id ? (
+              <div className="flex items-center gap-2 text-sm text-neutral-400">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Connecting to Kestra...</span>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-neutral-500">
+                  No workflow execution linked to this candidate
+                </p>
+                <button
+                  onClick={handleRetryExecution}
+                  disabled={retryLoading || !candidate?.resume_text}
+                  className="btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {retryLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                  Retry ATS scoring
+                </button>
+                {!candidate?.resume_text && (
+                  <p className="text-xs text-neutral-500">
+                    Retry is unavailable because the resume text was not saved.
+                  </p>
                 )}
               </div>
-            </>
-          ) : candidate.kestra_execution_id ? (
-            <div className="flex items-center gap-2 text-sm text-neutral-400">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Connecting to Kestra...</span>
-            </div>
-          ) : (
-            <p className="text-sm text-neutral-500">
-              No workflow execution linked to this candidate
-            </p>
-          )}
-        </div>
-
-        {/* Notes */}
-        <div className="card">
-          <h3 className="text-sm font-semibold text-neutral-300 mb-3">Notes</h3>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Add notes about this candidate..."
-            rows={5}
-            className="input-field resize-none mb-3"
-          />
-          <button
-            onClick={handleSaveNotes}
-            disabled={notesLoading}
-            className="btn-secondary"
-          >
-            {notesLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4" />
             )}
-            Save notes
-          </button>
+          </div>
+
+          {/* Notes */}
+          <div className="card">
+            <h3 className="text-sm font-semibold text-neutral-300 mb-3">
+              Notes
+            </h3>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Add notes about this candidate..."
+              rows={5}
+              className="input-field resize-none mb-3"
+            />
+            <button
+              onClick={handleSaveNotes}
+              disabled={notesLoading}
+              className="btn-secondary"
+            >
+              {notesLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              Save notes
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+
+      <ConfirmDialog
+        isOpen={deleteDialogOpen}
+        title={`Delete ${candidate?.name || "candidate"}?`}
+        description="This will permanently remove the candidate record and cannot be undone."
+        confirmLabel="Delete candidate"
+        cancelLabel="Keep candidate"
+        loading={deleteLoading}
+        variant="danger"
+        onCancel={() => {
+          if (!deleteLoading) setDeleteDialogOpen(false);
+        }}
+        onConfirm={async () => {
+          setDeleteDialogOpen(false);
+          await handleDeleteCandidate();
+        }}
+      />
+    </>
   );
 }
 

@@ -8,7 +8,7 @@
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #334155 transparent;
+  scrollbar-color: rgb(var(--neutral-700)) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -21,13 +21,108 @@
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: #334155;
+  background-color: rgb(var(--neutral-700));
   border-radius: 3px;
 }
 
+:root {
+  color-scheme: dark;
+  --surface-base: 26 29 35;
+  --surface-secondary: 34 38 46;
+  --surface-tertiary: 42 47 56;
+  --surface-elevated: 49 55 64;
+  --neutral-50: 248 250 252;
+  --neutral-100: 241 245 249;
+  --neutral-200: 226 232 240;
+  --neutral-300: 203 213 225;
+  --neutral-400: 148 163 184;
+  --neutral-500: 100 116 139;
+  --neutral-600: 71 85 105;
+  --neutral-700: 51 65 85;
+  --neutral-800: 30 41 59;
+  --neutral-900: 15 23 42;
+  --neutral-950: 2 6 23;
+  --skeleton-1: 34 38 46;
+  --skeleton-2: 42 47 56;
+}
+
+html.dark {
+  color-scheme: dark;
+  --surface-base: 26 29 35;
+  --surface-secondary: 34 38 46;
+  --surface-tertiary: 42 47 56;
+  --surface-elevated: 49 55 64;
+  --neutral-50: 248 250 252;
+  --neutral-100: 241 245 249;
+  --neutral-200: 226 232 240;
+  --neutral-300: 203 213 225;
+  --neutral-400: 148 163 184;
+  --neutral-500: 100 116 139;
+  --neutral-600: 71 85 105;
+  --neutral-700: 51 65 85;
+  --neutral-800: 30 41 59;
+  --neutral-900: 15 23 42;
+  --neutral-950: 2 6 23;
+  --skeleton-1: 34 38 46;
+  --skeleton-2: 42 47 56;
+}
+
+html.light {
+  color-scheme: light;
+  --surface-base: 250 248 243;
+  --surface-secondary: 255 253 248;
+  --surface-tertiary: 245 242 235;
+  --surface-elevated: 235 231 222;
+  --neutral-50: 15 15 15;
+  --neutral-100: 40 40 40;
+  --neutral-200: 60 60 60;
+  --neutral-300: 55 55 55;
+  --neutral-400: 80 80 80;
+  --neutral-500: 105 105 105;
+  --neutral-600: 155 155 155;
+  --neutral-700: 180 180 180;
+  --neutral-800: 210 210 210;
+  --neutral-900: 230 230 230;
+  --neutral-950: 245 245 245;
+  --skeleton-1: 235 231 222;
+  --skeleton-2: 245 242 235;
+}
+
 body {
-  background: #1a1d23;
+  background: rgb(var(--surface-base));
+  color: rgb(var(--neutral-200));
   min-height: 100vh;
+}
+
+html.light body {
+  font-weight: 500;
+}
+
+html.light .btn-primary,
+html.light .btn-secondary {
+  font-weight: 600;
+}
+
+html.light [class*="text-danger"],
+html.light [class*="text-red-"] {
+  font-weight: 600;
+}
+
+html.light [class*="text-danger-200"],
+html.light [class*="text-danger-300"],
+html.light [class*="text-danger-400"],
+html.light [class*="text-red-300"],
+html.light [class*="text-red-400"],
+html.light [class*="text-red-500"] {
+  color: rgb(153 27 27) !important;
+}
+
+html.light .toast-item {
+  font-weight: 600;
+}
+
+html.light .toast-item p {
+  font-weight: 700;
 }
 
 /* ═══════════════════════════════════════════════
@@ -46,9 +141,9 @@ body {
 .skeleton {
   background: linear-gradient(
     90deg,
-    #22262e 25%,
-    #2a2f38 50%,
-    #22262e 75%
+    rgb(var(--skeleton-1)) 25%,
+    rgb(var(--skeleton-2)) 50%,
+    rgb(var(--skeleton-1)) 75%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
@@ -87,6 +182,34 @@ body {
 
 .toast-exit {
   animation: toast-out 0.3s ease-in forwards;
+}
+
+@keyframes modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-backdrop-enter {
+  animation: modal-backdrop-in 0.18s ease-out forwards;
+}
+
+.modal-panel-enter {
+  animation: modal-panel-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* ═══════════════════════════════════════════════
@@ -133,7 +256,8 @@ body {
    ═══════════════════════════════════════════════ */
 
 @keyframes pulse-dot {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
   }
@@ -166,8 +290,14 @@ body {
    ═══════════════════════════════════════════════ */
 
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-fade-in {

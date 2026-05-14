@@ -57,7 +57,7 @@ tasks:
       type: constant
       maxAttempt: 2
       interval: PT30S
-    from: "umeshgupta050104@gmail.com"
+    from: "{{ secret('SMTP_USERNAME') }}"
     to: "umeshgupta050104@gmail.com"
     subject: "⚠️ Kestra workflow failure — {{ inputs.workflow_id }}"
     htmlTextContent: |
@@ -101,5 +101,5 @@ tasks:
       </html>
     host: smtp.gmail.com
     port: 465
-    username: umeshgupta050104@gmail.com
-    password: "rhdf pdnq utpt gynt"
+    username: "{{ secret('SMTP_USERNAME') }}"
+    password: "{{ secret('SMTP_PASSWORD') }}"

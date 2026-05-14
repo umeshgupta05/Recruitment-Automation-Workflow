@@ -118,14 +118,14 @@ tasks:
       type: constant
       maxAttempt: 2
       interval: PT30S
-    from: "umeshgupta050104@gmail.com"
+    from: "{{ secret('SMTP_USERNAME') }}"
     to: "{{ inputs.candidate_email | trim }}"
     subject: "Update on your {{ inputs.job_title }} application"
     htmlTextContent: "{{ outputs.build_stage_email.vars.email_body }}"
     host: smtp.gmail.com
     port: 465
-    username: umeshgupta050104@gmail.com
-    password: "rhdf pdnq utpt gynt"
+    username: "{{ secret('SMTP_USERNAME') }}"
+    password: "{{ secret('SMTP_PASSWORD') }}"
 
   # ── TASK 3: Normalize candidate key ─────────────────────────────────────
   - id: normalize_candidate_key

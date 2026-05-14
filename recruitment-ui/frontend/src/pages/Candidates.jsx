@@ -96,16 +96,16 @@ export default function Candidates() {
       {!loading && rejectedCount > 0 && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-3">
           <div>
-            <p className="text-sm font-medium text-danger-300">
+            <p className="text-sm font-semibold text-danger-700 dark:text-danger-300">
               {rejectedCount} rejected by ATS
             </p>
-            <p className="text-xs text-danger-200/80">
+            <p className="text-xs font-medium text-danger-200/80">
               These candidates are locked from stage progression.
             </p>
           </div>
           <button
             onClick={() => updateParam("stage", "rejected")}
-            className="btn-secondary border-danger-500/40 text-danger-200 hover:bg-danger-500/15"
+            className="btn-secondary border-danger-500/40 text-danger-200 hover:bg-danger-500/15 font-semibold"
           >
             View rejected
           </button>

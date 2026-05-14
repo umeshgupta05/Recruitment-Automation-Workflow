@@ -29,17 +29,27 @@ const upload = multer({
   },
 });
 
-// POST /api/upload
+// POST /api/apply - Candidate applies to a job
 router.post("/", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No PDF file uploaded" });
     }
 
-    const { name, email, phone, job_title, score_threshold } = req.body;
+    const { name, email, phone, job_id } = req.body;
 
-    if (!name || !email) {
-      return res.status(400).json({ error: "Name and email are required" });
+    if (!name || !email || !job_id) {
+      return res
+        .status(400)
+        .json({ error: "Name, email, and job_id are required" });
+    }
+
+    // Fetch job details
+    const db = getDb();
+    const job = db.prepare("SELECT * FROM jobs WHERE id = ?").get(job_id);
+
+    if (!job) {
+      return res.status(404).json({ error: "Job not found" });
     }
 
     // Extract text from PDF
@@ -54,37 +64,33 @@ router.post("/", upload.single("file"), async (req, res) => {
       resumeText = "[PDF text extraction failed]";
     }
 
-    const db = getDb();
-    const parsedThreshold = Number.parseInt(score_threshold, 10);
-    const finalThreshold = Number.isFinite(parsedThreshold)
-      ? Math.min(100, Math.max(0, parsedThreshold))
-      : 70;
-
-    // Check for duplicate email
+    // Check for duplicate application to same job
     const existing = db
       .prepare(
-        "SELECT id FROM candidates WHERE email = ? AND deleted_at IS NULL",
+        "SELECT id FROM candidates WHERE email = ? AND job_id = ? AND deleted_at IS NULL",
       )
-      .get(email);
+      .get(email, job_id);
+
     if (existing) {
       return res
         .status(409)
-        .json({ error: "A candidate with this email already exists" });
+        .json({ error: "You have already applied to this job" });
     }
 
-    // Insert candidate
+    // Insert candidate application
     const result = db
       .prepare(
-        `INSERT INTO candidates (name, email, phone, job_title, resume_text, resume_filename, stage)
-       VALUES (?, ?, ?, ?, ?, ?, 'applied')`,
+        `INSERT INTO candidates (name, email, phone, job_title, resume_text, resume_filename, stage, job_id)
+       VALUES (?, ?, ?, ?, ?, ?, 'applied', ?)`,
       )
       .run(
         name,
         email,
         phone || null,
-        job_title || null,
+        job.title,
         resumeText,
         req.file.filename,
+        job_id,
       );
 
     const candidateId = result.lastInsertRowid;
@@ -92,6 +98,9 @@ router.post("/", upload.single("file"), async (req, res) => {
     // Trigger Kestra ATS scorer workflow
     let executionId = null;
     try {
+      const scoreThreshold = Number.isFinite(Number(job.score_threshold))
+        ? Number(job.score_threshold)
+        : 70;
       const wfResult = await kestra.triggerWorkflowWebhook(
         "recruitment.workflows",
         "wf1_ats_scorer",
@@ -99,11 +108,10 @@ router.post("/", upload.single("file"), async (req, res) => {
         {
           candidate_name: name,
           candidate_email: email,
-          job_title: job_title || "Software Engineer",
+          job_title: job.title,
           resume_text: resumeText.substring(0, 5000), // Limit text length
-          score_threshold: finalThreshold,
-          job_description:
-            "Full stack developer with 3+ years experience in Node.js and React",
+          score_threshold: scoreThreshold,
+          job_description: job.description,
         },
       );
       executionId = wfResult.executionId;
@@ -117,7 +125,7 @@ router.post("/", upload.single("file"), async (req, res) => {
       db.prepare(
         `INSERT INTO workflow_runs (flow_id, execution_id, candidate_email, status, started_at, trigger_reason)
          VALUES (?, ?, ?, ?, datetime('now'), ?)`,
-      ).run("wf1_ats_scorer", executionId, email, "CREATED", "Resume upload");
+      ).run("wf1_ats_scorer", executionId, email, "CREATED", "Job application");
     } catch (kestraErr) {
       console.warn(
         "Kestra ATS scorer trigger failed (non-blocking):",
@@ -128,10 +136,11 @@ router.post("/", upload.single("file"), async (req, res) => {
     res.status(201).json({
       candidateId,
       executionId,
-      message: "Resume uploaded and scoring workflow triggered",
+      jobId: job_id,
+      message: "Application submitted successfully",
     });
   } catch (err) {
-    console.error("POST /upload error:", err);
+    console.error("POST /api/apply error:", err);
     res.status(500).json({ error: err.message });
   }
 });

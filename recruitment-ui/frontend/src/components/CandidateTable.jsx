@@ -12,11 +12,11 @@ function getInitials(name) {
 }
 
 const avatarColors = [
-  'bg-primary-500/20 text-primary-300 border-primary-500/30',
-  'bg-success-500/20 text-success-300 border-success-500/30',
-  'bg-warning-500/20 text-warning-300 border-warning-500/30',
-  'bg-danger-500/20 text-danger-300 border-danger-500/30',
-  'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  'bg-primary-500/20 text-primary-700 dark:text-primary-300 border-primary-500/30',
+  'bg-success-500/20 text-success-700 dark:text-success-300 border-success-500/30',
+  'bg-warning-500/20 text-warning-700 dark:text-warning-300 border-warning-500/30',
+  'bg-danger-500/20 text-danger-700 dark:text-danger-300 border-danger-500/30',
+  'bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-500/30',
   'bg-purple-500/20 text-purple-300 border-purple-500/30',
 ];
 

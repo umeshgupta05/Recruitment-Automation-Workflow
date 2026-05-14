@@ -100,7 +100,7 @@ tasks:
               import google.generativeai as genai
               from kestra import Kestra
 
-              genai.configure(api_key="YOUR_GEMINI_API_KEY_HERE")   # 🔑 replace with your key
+              genai.configure(api_key="{{ secret('GEMINI_API_KEY') }}")   # 🔑 replace with your key
 
               model = genai.GenerativeModel(
                   model_name="gemini-2.5-flash",
@@ -131,7 +131,7 @@ tasks:
               type: constant
               maxAttempt: 2
               interval: PT30S
-            from: umeshgupta050104@gmail.com
+            from: "{{ secret('SMTP_USERNAME') }}"
             to: "{{ outputs.check_idle.vars.candidate_email | trim }}"
             subject: "Still interested in {{ outputs.check_idle.vars.candidate_role }}? Here are some tips"
             htmlTextContent: |
@@ -143,8 +143,8 @@ tasks:
               </body></html>
             host: smtp.gmail.com
             port: 465
-            username: umeshgupta050104@gmail.com
-            password: "rhdf pdnq utpt gynt"
+            username: "{{ secret('SMTP_USERNAME') }}"
+            password: "{{ secret('SMTP_PASSWORD') }}"
 
           # 2e. Stamp last_nudged on the profile
           - id: prepare_nudge_stamp

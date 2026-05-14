@@ -82,8 +82,8 @@ inputs:
     description: "Minimum ATS score required to pass (default 70)"
   - id: backend_base_url
     type: STRING
-    defaults: "http://localhost:3001/api"
-    description: "Backend base URL for syncing ATS results"
+    defaults: "http://host.docker.internal:3001/api"
+    description: "Backend base URL for syncing ATS results (use host.docker.internal when Kestra is in Docker)"
 
 tasks:
   # ── TASK 1: Clean resume text ─────────────────────────────────────────────
@@ -117,7 +117,7 @@ tasks:
       from google.genai import types
       from kestra import Kestra
 
-      client = genai.Client(api_key="AIzaSyA3f9qQJKtcu4yMI497_P6YfquwTLwhhRo")
+      client = genai.Client(api_key="{{ secret('GEMINI_API_KEY') }}")
       config = types.GenerateContentConfig(
           system_instruction=(
               "You are a professional ATS (Applicant Tracking System). "
@@ -183,7 +183,7 @@ tasks:
           type: constant
           maxAttempt: 2
           interval: PT30S
-        from: "umeshgupta050104@gmail.com"
+        from: "{{ secret('SMTP_USERNAME') }}"
         to: "{{ outputs.normalize_candidate_email.vars.clean_email }}"
         subject: "New shortlisted candidate: {{ inputs.candidate_name }} for {{ inputs.job_title }}"
         htmlTextContent: |
@@ -204,8 +204,8 @@ tasks:
           </body></html>
         host: smtp.gmail.com
         port: 465
-        username: umeshgupta050104@gmail.com
-        password: "rhdf pdnq utpt gynt"
+        username: "{{ secret('SMTP_USERNAME') }}"
+        password: "{{ secret('SMTP_PASSWORD') }}"
 
       # 3b. Save shortlisted state
       - id: save_state
@@ -226,6 +226,11 @@ tasks:
       - id: update_candidate_db
         type: io.kestra.plugin.core.http.Request
         description: "Syncs ATS results to the recruitment UI database."
+        timeout: PT10S
+        retry:
+          type: constant
+          maxAttempt: 2
+          interval: PT3S
         method: POST
         uri: "{{ inputs.backend_base_url }}/workflows/ats-result"
         headers:
@@ -240,6 +245,7 @@ tasks:
             "stage": "shortlisted",
             "execution_id": "{{ execution.id }}"
           }
+        allowFailure: true
 
     else:
       # 3c. Generate rejection email via Gemini
@@ -254,7 +260,7 @@ tasks:
           from google.genai import types
           from kestra import Kestra
 
-          client = genai.Client(api_key="AIzaSyA3f9qQJKtcu4yMI497_P6YfquwTLwhhRo")
+          client = genai.Client(api_key="{{ secret('GEMINI_API_KEY') }}")
           config = types.GenerateContentConfig(
               system_instruction=(
                   "You are a kind, professional recruiter writing a rejection email. "
@@ -288,7 +294,7 @@ tasks:
           type: constant
           maxAttempt: 2
           interval: PT30S
-        from: "umeshgupta050104@gmail.com"
+        from: "{{ secret('SMTP_USERNAME') }}"
         to: "{{ outputs.normalize_candidate_email.vars.clean_email }}"
         subject: "Your application for {{ inputs.job_title }} — update"
         htmlTextContent: |
@@ -299,8 +305,8 @@ tasks:
           </body></html>
         host: smtp.gmail.com
         port: 465
-        username: umeshgupta050104@gmail.com
-        password: "rhdf pdnq utpt gynt"
+        username: "{{ secret('SMTP_USERNAME') }}"
+        password: "{{ secret('SMTP_PASSWORD') }}"
 
       # 3e. Save rejected state
       - id: save_state_rejected
@@ -321,6 +327,11 @@ tasks:
       - id: update_candidate_db_rejected
         type: io.kestra.plugin.core.http.Request
         description: "Syncs ATS results to the recruitment UI database."
+        timeout: PT10S
+        retry:
+          type: constant
+          maxAttempt: 2
+          interval: PT3S
         method: POST
         uri: "{{ inputs.backend_base_url }}/workflows/ats-result"
         headers:
@@ -335,6 +346,7 @@ tasks:
             "stage": "rejected",
             "execution_id": "{{ execution.id }}"
           }
+        allowFailure: true
 
 triggers:
   - id: resume_upload_webhook
